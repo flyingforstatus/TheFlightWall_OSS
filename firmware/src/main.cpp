@@ -1,10 +1,12 @@
 /*
 Purpose: Firmware entry point for ESP32.
 Responsibilities:
-- Initialize serial, connect to Wi‑Fi, and construct fetchers and display.
+- Initialize serial, mount LittleFS (logo store), connect to Wi-Fi.
+- Construct fetchers, logo store, and display.
 - Periodically fetch state vectors (OpenSky), enrich flights (AeroAPI), and render.
 Configuration: UserConfiguration (location/filters/colors), TimingConfiguration (intervals),
                WiFiConfiguration (SSID/password), HardwareConfiguration (display specs).
+Logo data:     Upload via 'pio run --target uploadfs' after running tools/build_logos.py.
 */
 #include <vector>
 #include <WiFi.h>
@@ -15,11 +17,13 @@ Configuration: UserConfiguration (location/filters/colors), TimingConfiguration 
 #include "config/TimingConfiguration.h"
 #include "adapters/OpenSkyFetcher.h"
 #include "adapters/AeroAPIFetcher.h"
+#include "adapters/LocalLogoStore.h"
 #include "core/FlightDataFetcher.h"
 #include "adapters/NeoMatrixDisplay.h"
 
-static OpenSkyFetcher g_openSky;
-static AeroAPIFetcher g_aeroApi;
+static OpenSkyFetcher   g_openSky;
+static AeroAPIFetcher   g_aeroApi;
+static LocalLogoStore   g_logoStore;
 static FlightDataFetcher *g_fetcher = nullptr;
 static NeoMatrixDisplay g_display;
 
@@ -32,6 +36,10 @@ void setup()
 
     g_display.initialize();
     g_display.displayMessage(String("FlightWall"));
+
+    // Mount LittleFS for local logo storage.
+    // Failure is non-fatal — logo display is simply skipped.
+    g_logoStore.initialize();
 
     if (strlen(WiFiConfiguration::WIFI_SSID) > 0)
     {
@@ -62,7 +70,7 @@ void setup()
         }
     }
 
-    g_fetcher = new FlightDataFetcher(&g_openSky, &g_aeroApi);
+    g_fetcher = new FlightDataFetcher(&g_openSky, &g_aeroApi, &g_logoStore);
 }
 
 void loop()
@@ -95,30 +103,14 @@ void loop()
         for (const auto &f : flights)
         {
             Serial.println("=== FLIGHT INFO ===");
-            Serial.print("Ident: ");
-            Serial.println(f.ident);
-            Serial.print("Ident ICAO: ");
-            Serial.println(f.ident_icao);
-            Serial.print("Ident IATA: ");
-            Serial.println(f.ident_iata);
-            Serial.print("Airline: ");
-            Serial.println(f.airline_display_name_full);
-            Serial.print("Aircraft: ");
-            Serial.println(f.aircraft_display_name_short.length() ? f.aircraft_display_name_short : f.aircraft_code);
-            Serial.print("Operator Code: ");
-            Serial.println(f.operator_code);
-            Serial.print("Operator ICAO: ");
-            Serial.println(f.operator_icao);
-            Serial.print("Operator IATA: ");
-            Serial.println(f.operator_iata);
-
-            Serial.println("--- Origin ---");
-            Serial.print("Code ICAO: ");
-            Serial.println(f.origin.code_icao);
-
-            Serial.println("--- Destination ---");
-            Serial.print("Code ICAO: ");
-            Serial.println(f.destination.code_icao);
+            Serial.print("Ident: ");        Serial.println(f.ident);
+            Serial.print("Airline: ");      Serial.println(f.airline_display_name_full);
+            Serial.print("Aircraft: ");     Serial.println(f.aircraft_display_name_short.length()
+                                                           ? f.aircraft_display_name_short
+                                                           : f.aircraft_code);
+            Serial.printf("Origin: %s (%s) %s\n", f.origin.code_iata.c_str(), f.origin.code_icao.c_str(), f.origin.name.c_str());
+            Serial.printf("Destination: %s (%s) %s\n", f.destination.code_iata.c_str(), f.destination.code_icao.c_str(), f.destination.name.c_str());
+            Serial.print("Logo pixels: ");  Serial.println((int)f.airline_logo_rgb565.size());
             Serial.println("===================");
         }
 

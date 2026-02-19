@@ -2,7 +2,7 @@
 Purpose: Retrieve detailed flight metadata from AeroAPI over HTTPS.
 Responsibilities:
 - Perform authenticated GET to /flights/{ident} using API key.
-- Parse minimal fields into FlightInfo (ident/operator/aircraft and ICAO codes).
+- Parse FlightInfo fields including full airport names for the 64x64 display.
 - Handle TLS (optionally insecure for dev) and JSON errors gracefully.
 Input: flight ident (e.g., callsign).
 Output: Populates FlightInfo on success and returns true.
@@ -63,9 +63,9 @@ bool AeroAPIFetcher::fetchFlightInfo(const String &flightIdent, FlightInfo &outI
     }
 
     JsonObject f = flights[0].as<JsonObject>();
-    outInfo.ident = safeGetString(f, "ident");
-    outInfo.ident_icao = safeGetString(f, "ident_icao");
-    outInfo.ident_iata = safeGetString(f, "ident_iata");
+    outInfo.ident        = safeGetString(f, "ident");
+    outInfo.ident_icao   = safeGetString(f, "ident_icao");
+    outInfo.ident_iata   = safeGetString(f, "ident_iata");
     outInfo.operator_code = safeGetString(f, "operator");
     outInfo.operator_icao = safeGetString(f, "operator_icao");
     outInfo.operator_iata = safeGetString(f, "operator_iata");
@@ -75,12 +75,16 @@ bool AeroAPIFetcher::fetchFlightInfo(const String &flightIdent, FlightInfo &outI
     {
         JsonObject o = f["origin"].as<JsonObject>();
         outInfo.origin.code_icao = safeGetString(o, "code_icao");
+        outInfo.origin.code_iata = safeGetString(o, "code_iata");
+        outInfo.origin.name      = safeGetString(o, "name");
     }
 
     if (f.containsKey("destination") && f["destination"].is<JsonObject>())
     {
         JsonObject d = f["destination"].as<JsonObject>();
         outInfo.destination.code_icao = safeGetString(d, "code_icao");
+        outInfo.destination.code_iata = safeGetString(d, "code_iata");
+        outInfo.destination.name      = safeGetString(d, "name");
     }
 
     return true;
